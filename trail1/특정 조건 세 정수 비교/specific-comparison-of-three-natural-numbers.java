@@ -6,8 +6,8 @@ public class Main {
         int a = sc.nextInt();
         int b = sc.nextInt();
         int c = sc.nextInt();
-
-        int min = (a<b)?((a<c)?a:b):((b<c)?b:c);
+        
+        int min = (a<b)?((a<c)?a:c):((b<c)?b:c);        
 
         if(a == min) System.out.print(1 + " ");
         else System.out.print(0 + " ");
@@ -16,5 +16,6 @@ public class Main {
             System.out.print(1);
         } else System.out.print(0);
 
+        sc.close();
     }
 }
