@@ -1,0 +1,61 @@
+name: Notion study sync
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths: ['notion-sync/**', '.github/workflows/notion-study-sync.yml']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Preview only; do not write to Notion'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# A replaced pending run is safe: every run scans all reachable submissions.
+concurrency:
+  group: notion-study-sync-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'main' }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event_name == 'pull_request' && github.ref || 'main' }}
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Test and package
+        run: ./notion-sync/mvnw -B -f notion-sync/pom.xml verify
+      - name: Preview recorded submissions
+        run: java -jar notion-sync/target/algo-study-sync.jar --dry-run --output notion-sync/target/preview.json
+      - name: Check Notion connection
+        id: connection
+        if: github.event_name != 'pull_request'
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+        run: |
+          if [ -n "$NOTION_TOKEN" ]; then
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+            echo '::notice::Notion sync is pending: add the NOTION_TOKEN repository secret.'
+            echo 'Notion 자동 기록은 아직 꺼져 있습니다. NOTION_TOKEN 등록 후 Run workflow에서 dry_run을 해제하세요.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Create new study records
+        if: github.event_name != 'pull_request' && steps.connection.outputs.ready == 'true' && (github.event_name != 'workflow_dispatch' || inputs.dry_run == false)
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_PROBLEMS_DATA_SOURCE_ID: ${{ vars.NOTION_PROBLEMS_DATA_SOURCE_ID || '41bda392-82f1-8130-9edd-000b3999b05b' }}
+          NOTION_ATTEMPTS_DATA_SOURCE_ID: ${{ vars.NOTION_ATTEMPTS_DATA_SOURCE_ID || '41bda392-82f1-819c-b4d6-000b0f4efcf8' }}
+        run: java -jar notion-sync/target/algo-study-sync.jar
